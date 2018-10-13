@@ -41,12 +41,12 @@ barcodes = {
 fastq1 = 'myfastq.R1.fastq.gz'
 fastq2 = 'myfastq.R2.fastq.gz'
 
-for entry in parse_fastq_barcodes(f1, f2, spec=barcodes, edit_distance=2):
+for entry in bu.parse_fastq_barcodes(fastq1, fastq2, spec=barcodes, edit_distance=2):
     # you can now access any barcodes from spec
     umi_seq = entry['umi']
     r1_barcode_seq = entry['r1_barcode']
 
-    # You can also access r1/r1 seq, name, quals automatically
+    # You can also access r1/r2 seq, name, quals automatically
     r1_seq = entry['r1_seq']
     r1_quals = entry['r1_quals']
     r1_name = entry['r1_name']
@@ -71,7 +71,7 @@ If you just want to correct sequences to a known list of sequences, we also offe
 ```
 my_r1_barcodes = ["TTCTCGCATG", "TCCTACCAGT", "GCGTTGGAGC", "GATCTTACGC", "CTGATGGTCA", "CCGAGAATCC", "GCCGCAACGA", "TGAGTCTGGC"]
 
-r1_correcter = BarcodeCorrecter(my_r1_barcodes, edit_distance=2)
+r1_correcter = bu.BarcodeCorrecter(my_r1_barcodes, edit_distance=2)
 
 corrected = r1_correcter.correct("CACCTTACGC") # GATCTTACGC
 
