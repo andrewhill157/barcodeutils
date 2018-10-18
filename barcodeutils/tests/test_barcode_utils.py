@@ -418,5 +418,5 @@ def test_parse_fastq_barcodes():
 
 def test_get_run_info():
     run_info = get_run_info('.')
-    expected_output = {'flow_cell_id': 'HMHMGBGX7', 'date': '181011', 'instrument': 'NS500488', 'lanes': 4, 'r1_length': 18, 'p7_index_length': 10, 'p5_index_length': 10, 'r2_length': 52}
+    expected_output = {'instrument_type': 'NextSeq', 'lanes': 4, 'instrument': 'NS500488', 'p5_index_length': 0, 'p7_index_length': 6, 'flow_cell_id': 'HKFWJBGXX', 'r2_length': 151, 'r1_length': 151, 'date': '151117'}
     assert run_info == expected_output

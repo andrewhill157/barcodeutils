@@ -40,6 +40,14 @@ HISEQ3000 = 'HiSeq3000'
 HISEQ = 'HiSeq'
 UNKNOWN_SEQUENCER = 'unknown'
 
+SEQUENCERS_P5_RC_MAP = {
+    NEXTSEQ: True,
+    MISEQ: False,
+    NOVASEQ: False,
+    HISEQ4000: True,
+    HISEQ3000: False
+}
+
 _accepted_read_keys = {I5, I7, R1, R2}
 _accepted_barcode_properties = {BC_READ, BC_START, BC_END, BC_WHITELIST}
 _required_barcode_properties = {BC_READ, BC_START, BC_END}
@@ -48,55 +56,27 @@ _reserved_keys = {'r1_name', 'r2_name', 'r1_seq', 'r2_seq', 'r1_qual', 'r2_qual'
 
 def reverse_complement_i5(name):
     """
-    Take a BCL directory, fastq file, or instrument ID and return whether or not i5 should be reverse complemented.
+    Take a BCL directory or instrument type (NextSeq, MiSeq, NovaSeq, HiSeq4000, HiSeq3000) and return whether or not i5 should be reverse complemented.
     This assumes that NextSeq instruments and other similar machines should be reverse complemeted whereas MiSeq should not.
 
     Args:
-        
-    """
-    run_info = os.path.join(name, 'RunInfo.xml')
-    if os.path.exists(run_info):
-        # Arg is BCL
-        sequencer_name = get_run_info(name)
-    elif os.path.exists(name) and '.fq' in name or '.fastq' in name:
-        # Is fastq file
-        sequencer_name = get_instrument_id(name)
-    elif re.match('^[A-Z0-9]+$', name):
-        sequencer_name = name
-    else:
-        raise ValueError('Invalid input, could not detect fastq (or fq) file, BCL, or instrument ID.')
-
-    return _should_reverse_complement_i5(sequencer_name)
-
-
-def get_instrument_id(fastq):
-    """
-    Helper function to quickly get the instrument ID from first line of Fastq file.
-    This function assumes that you have not modified the FASTQ header in such a way that the instrument ID is no longer present.
-
-    Args:
-        fastq (str): Path to fastq file
-
+        name (str): BCL directory or one of the instrument types as mentioned above    
+    
     Returns:
-        str: instrument ID
+        bool: True if user would typically reverse complement i5 index and False otherwise.
     """
-
-    for line in FastqGeneralIterator(open_file(fastq)):
-        r_name, _, _ = line
+    
+    if name in SEQUENCERS_P5_RC_MAP:
+        sequencer_type = name
+    elif os.path.exists(name):
+        sequencer_type = get_run_info(name)['instrument_type']
         
-        entries = r_name.split(':')[0]
-        if len(entries) <= 2 or not re.match('^[A-Z0-9]+$', entries[0]):
-            raise ValueError('Valid instrument ID not apparent in FASTQ read names... %s' % r_name)
-        return entries[0]
+        if sequencer_type not in SEQUENCERS_P5_RC_MAP:
+            raise ValueError('Sequencer type detected from BCL is %s, which is not in our known list of which sequencers require P5 reverse complementing or not.' % sequencer_type)
+    else:
+        raise ValueError('Invalid input, could not detect BCL or instrument ID.')
 
-def _should_reverse_complement_i5(instrument_id):
-    """
-    Internal helper function just to handle mapping instrument IDs to
-    whether or not the P5 should be reverse complemented.
-    """
-    # Currently just assume Miseq should not be and everything else should be
-    # TODO this is obviously not comprehensive.
-    return instrument_id != 'M'
+    return SEQUENCERS_P5_RC_MAP[sequencer_type]
 
 def get_run_info(flow_cell_path):
     """
