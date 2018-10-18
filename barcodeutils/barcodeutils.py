@@ -409,25 +409,28 @@ def _get_index_coords(r1_name):
     """
     Helper functions to get index read start and end coords given R1 read name.
     """
-    i7_start_coord = r1_name.rfind(':') + 1
+    indices_start = r1_name.rfind(':') + 1
 
     # Handle not having any valid index seqs in read name
-    if not is_dna(r1_name[i7_start_coord:].replace('+', '')):
-        return None, None, None, None
+    print(r1_name[indices_start:].replace('+', ''))
+    if not is_dna(r1_name[indices_start:].replace('+', '')):
+        return None, None, None, None, None
 
-    indices = r1_name[i7_start_coord:]
+    i7_start_coord = 0
+    indices = r1_name[indices_start:]
+    index_start = -len(indices)
 
     if '+' in indices:
-        split = r1_name.rfind('+')
-        i5_start_coord = split + 1
-        i5_end_coord = len(r1_name)
-        i7_end_coord = split
+        split = indices.split('+')
+        i5_start_coord = len(split[0]) + 1
+        i5_end_coord = len(indices)
+        i7_end_coord = len(split[0])
     else:
         i5_start_coord = None
         i5_end_coord = None
-        i7_end_coord = len(r1_name)
+        i7_end_coord = len(indices)
     
-    return i7_start_coord, i7_end_coord, i5_start_coord, i5_end_coord
+    return index_start, i7_start_coord, i7_end_coord, i5_start_coord, i5_end_coord
 
 
 def _validate_barcode_read_pair(read_seq, bc_end):
@@ -482,6 +485,7 @@ def parse_fastq_barcodes(r1, r2=None, spec=None, reverse_i5=False, edit_distance
     # Iterate
     barcodes_dict = dict()
 
+    index_start = None
     i5_start = None
     i5_end = None
     i7_start = None
@@ -506,8 +510,8 @@ def parse_fastq_barcodes(r1, r2=None, spec=None, reverse_i5=False, edit_distance
             barcodes_dict['r1_qual'] = r1_qual
 
         # Find index coords
-        if (i7_start is None and i7_end is None) and (I7 in requested_reads or I5 in requested_reads):
-            i7_start, i7_end, i5_start, i5_end = _get_index_coords(r1_name)
+        if (index_start is None and i7_start is None and i7_end is None) and (I7 in requested_reads or I5 in requested_reads):
+            index_start, i7_start, i7_end, i5_start, i5_end = _get_index_coords(r1_name)
             if (i5_start is None or i5_end is None) and I5 in requested_reads:
                 raise ValueError('Spec requests I5 read in barcode %s, but i5 index not found in r1 name %s.' % (barcode, r1_name))
             if (i7_start is None or i7_end is None) and I7 in requested_reads:
@@ -521,7 +525,7 @@ def parse_fastq_barcodes(r1, r2=None, spec=None, reverse_i5=False, edit_distance
 
 
             if bc_read == I5:
-                read_seq = r1_name[i5_start:i5_end]
+                read_seq = r1_name[index_start: ][i5_start:i5_end]
                 if not read_lengths_checked:
                     _validate_barcode_read_pair(read_seq, bc_end)
 
@@ -531,7 +535,7 @@ def parse_fastq_barcodes(r1, r2=None, spec=None, reverse_i5=False, edit_distance
                     bc_seq = read_seq[bc_start:bc_end]
  
             elif bc_read == I7:
-                read_seq = r1_name[i7_start:i7_end]
+                read_seq = r1_name[index_start:][i7_start:i7_end]
                 if not read_lengths_checked:
                     _validate_barcode_read_pair(read_seq, bc_end)
      

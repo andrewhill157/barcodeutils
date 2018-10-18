@@ -189,7 +189,7 @@ def test_validate_barcode_spec_whitelist():
     spec = {
         'cell_barcode': {
             BC_START: 1,
-            BC_END: 10,
+            BC_END: 5,
             BC_READ: R1,
             BC_WHITELIST: ['ATACA', 'TATAC', 'ATACT']
         },
@@ -201,7 +201,7 @@ def test_validate_barcode_spec_whitelist():
     spec = {
         'cell_barcode': {
             BC_START: 1,
-            BC_END: 10,
+            BC_END: 5,
             BC_READ: R1,
             BC_WHITELIST: {'ATACA', 'TATAC', 'ATACT'}
         },
@@ -213,7 +213,7 @@ def test_validate_barcode_spec_whitelist():
     spec = {
         'cell_barcode': {
             BC_START: 1,
-            BC_END: 10,
+            BC_END: 5,
             BC_READ: R1,
             BC_WHITELIST: 'whitelist.txt'
         },
@@ -278,37 +278,40 @@ def test_barcode_correcter():
 def test_get_index_coords():
     # Paired end
     r1_name = '...:N:0:TCGGATTCGG+CTCCATGGAG'
-    i7_start = 8
-    i7_end = 18
-    i5_start = 19
-    i5_end = 29
+    index_start = -21
+    i7_start = 0
+    i7_end = 10
+    i5_start = 11
+    i5_end = 21
     output = bu._get_index_coords(r1_name)
-    assert output == (i7_start, i7_end, i5_start, i5_end)
+    assert output == (index_start, i7_start, i7_end, i5_start, i5_end)
 
     ## Also test output seq to make sure is ok
-    assert r1_name[i7_start:i7_end] == 'TCGGATTCGG'
-    assert r1_name[i5_start:i5_end] == 'CTCCATGGAG'
+    assert r1_name[index_start:][i7_start:i7_end] == 'TCGGATTCGG'
+    assert r1_name[index_start:][i5_start:i5_end] == 'CTCCATGGAG'
 
     # Single ended
     r1_name = '...:N:0:TCGGATTCGG'
-    i7_start = 8
-    i7_end = 18
+    index_start = -10
+    i7_start = 0
+    i7_end = 10
     i5_start = None
     i5_end = None
     output = bu._get_index_coords(r1_name)
-    assert output == (i7_start, i7_end, i5_start, i5_end)
+    assert output == (index_start, i7_start, i7_end, i5_start, i5_end)
 
     ## Also test output seq to make sure is ok
-    assert r1_name[i7_start:i7_end] == 'TCGGATTCGG'
+    assert r1_name[index_start:][i7_start:i7_end] == 'TCGGATTCGG'
 
     # Invalid (no indices)
     r1_name = '...:N:0'
+    index_start = None
     i7_start = None
     i7_end = None
     i5_start = None
     i5_end = None
     output = bu._get_index_coords(r1_name)
-    assert output == (i7_start, i7_end, i5_start, i5_end)
+    assert output == (index_start, i7_start, i7_end, i5_start, i5_end)
 
 def test_parse_fastq_barcodes():
     r1 = 'example.1.fastq.gz'
