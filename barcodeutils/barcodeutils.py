@@ -9,8 +9,6 @@ import os
 import xml.etree.ElementTree as ET
 import copy
 import math
-import io
-
 
 revcomp = None
 if sys.version_info[0] >= 3:
@@ -19,7 +17,7 @@ else:
     import itertools.izip as zip
     revcomp = string.maketrans('ACGTacgtRYMKrymkVBHDvbhd', 'TGCAtgcaYRKMyrkmBVDHbvdh')
 
-VALID_BASES = set(['A', 'C', 'G', 'T', 'a', 'c', 'g', 't', 'n', 'N'])
+VALID_BASES = {'A', 'C', 'G', 'T', 'a', 'c', 'g', 't', 'n', 'N'}
 
 I5 = 'i5'
 I7 = 'i7'
@@ -415,7 +413,6 @@ def _get_index_coords(r1_name):
 
     # Handle not having any valid index seqs in read name
     if not is_dna(r1_name[i7_start_coord:].replace('+', '')):
-        print(r1_name[i7_start_coord:].replace('+', ''))
         return None, None, None, None
 
     indices = r1_name[i7_start_coord:]
@@ -436,35 +433,6 @@ def _get_index_coords(r1_name):
 def _validate_barcode_read_pair(read_seq, bc_end):
     if bc_end > len(read_seq):
         raise ValueError('Requested region extends beyond end of %s bp long read.' % (len(read_seq)))
-
-def parse_fastq(file_handle):
-    """
-    Basic parsing of a fastq file into its lines.
-    """
-    name = None
-    seq = None
-    plus = None
-    qual = None
-
-    for line in file_handle:
-        if name is None:
-            name = line[1:].decode("utf-8").rstrip('\n')
-            continue
-        elif seq is None:
-            seq = line.decode("utf-8").rstrip('\n') 
-            continue
-        elif plus is None:
-            plus = '+'
-            continue
-        elif qual is None:
-            qual = line.decode("utf-8").rstrip('\n') 
-
-        result = (name, seq, qual)
-        name = None
-        seq = None
-        qual = None
-        yield result
-
 
 def parse_fastq_barcodes(r1, r2=None, spec=None, reverse_i5=False, edit_distance=2):
     spec = copy.deepcopy(spec)
@@ -495,14 +463,14 @@ def parse_fastq_barcodes(r1, r2=None, spec=None, reverse_i5=False, edit_distance
     # Now set up file handles
     if r1:
         if not hasattr(r1, 'read'):
-            r1_handle = parse_fastq(io.BufferedReader(open_file(r1, 'rb')))
+            r1_handle = FastqGeneralIterator(open_file(r1))
         else:
-            r1_handle = r1
+            r1_handle = FastqGeneralIterator(r1)
     if r2:
-        if not hasattr(r2, 'read'):
-            r2_handle = parse_fastq(io.BufferedReader(open_file(r2, 'rb')))
+        if not hasattr(r1, 'read'):
+            r2_handle = FastqGeneralIterator(open_file(r2))
         else:
-            r2_handle = parse_fastq(r2)
+            r2_handle = FastqGeneralIterator(r2)
 
     if r1 is not None and r2 is not None:
         fastq_iterator = zip(r1_handle, r2_handle)
