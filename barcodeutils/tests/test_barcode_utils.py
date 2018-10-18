@@ -78,7 +78,6 @@ def test_validate_barcode_spec_more_subtle():
         }
     }
     output, error = validate_barcode_spec(spec)
-    print(error)
     assert output == True and error is None
 
     # Valid spec

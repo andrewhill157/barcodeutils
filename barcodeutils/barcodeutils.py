@@ -96,24 +96,6 @@ def get_run_info(flow_cell_path):
     return run_stats
 
 
-def correct_barcode(barcode, mismatch_map):
-    """
-    Correct an observed raw barcode to one of a list of whitelists of mismatches.
-    Args:
-            barcode (string): barcode sequence to be corrected
-            mismatch_map (list of dict dict): list of dict of mismatched sequences to real sequences
-    Returns:
-            string: corrected barcodes or None if barcode not correctable.
-    """
-    for mismatch_whitelist in mismatch_map:
-        corrected = mismatch_whitelist.get(barcode, None)
-
-        if corrected:
-            return corrected
-
-    return None
-
-
 def generate_mismatches(sequence, num_mismatches, allow_n=True):
     """
     Generate a list of mimatched sequences to a given sequence. Must only contain ATGC.
@@ -351,6 +333,7 @@ def load_whitelist(whitelist):
     else:
         raise ValueError(error)
 
+        
 class BarcodeCorrecter:
     def __init__(self, whitelist, edit_distance=1):
         if not isinstance(whitelist, set) and not isinstance(whitelist, list):
@@ -375,7 +358,13 @@ class BarcodeCorrecter:
         self.mismatch_map = construct_mismatch_to_whitelist_map(self.whitelist, self.edit_distance)
 
     def correct(self, seq):
-        return correct_barcode(seq, self.mismatch_map)
+        for i in range(0, self.edit_distance + 1):
+            corrected = self.mismatch_map[i].get(seq, None)
+
+            if corrected is not None:
+                return corrected
+
+        return None
 
     def get_min_hamming(self, n=1):
         """
@@ -412,7 +401,6 @@ def _get_index_coords(r1_name):
     indices_start = r1_name.rfind(':') + 1
 
     # Handle not having any valid index seqs in read name
-    print(r1_name[indices_start:].replace('+', ''))
     if not is_dna(r1_name[indices_start:].replace('+', '')):
         return None, None, None, None, None
 
@@ -525,7 +513,7 @@ def parse_fastq_barcodes(r1, r2=None, spec=None, reverse_i5=False, edit_distance
 
 
             if bc_read == I5:
-                read_seq = r1_name[index_start: ][i5_start:i5_end]
+                read_seq = r1_name[index_start:][i5_start:i5_end]
                 if not read_lengths_checked:
                     _validate_barcode_read_pair(read_seq, bc_end)
 
