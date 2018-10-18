@@ -333,7 +333,26 @@ def load_whitelist(whitelist):
     else:
         raise ValueError(error)
 
-        
+class WriteBuffer:
+    def __init__(self, file_name, mode='w', buffer_size=100000):
+        if 'w' not in mode:
+            raise ValueError('WriteBuffer can only be opened in a mode containing w.')
+        self.file_handle = open_file(file_name, mode)
+        self.buffer_size = buffer_size
+        self.lines = []
+    def write(self, text):
+        if len(self.lines) >= self.buffer_size:
+            self.file_handle.write(''.join(self.lines))
+            self.lines = []
+        else:
+            self.lines.append(text)
+    def __enter__(self):
+        return self
+    def __exit__(self, type, value, traceback):
+        if len(self.lines) > 0:
+            self.file_handle.write(''.join(self.lines))
+        self.file_handle.close()
+
 class BarcodeCorrecter:
     def __init__(self, whitelist, edit_distance=1):
         if not isinstance(whitelist, set) and not isinstance(whitelist, list):
