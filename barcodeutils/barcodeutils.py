@@ -9,6 +9,9 @@ import os
 import xml.etree.ElementTree as ET
 import copy
 import math
+import re
+import glob
+
 
 revcomp = None
 if sys.version_info[0] >= 3:
@@ -29,11 +32,71 @@ BC_END = 'end'
 BC_WHITELIST = 'whitelist'
 BC_CORRECTION_MAP = 'correction_map'
 
+NEXTSEQ = 'NextSeq'
+MISEQ = 'MiSeq'
+NOVASEQ = 'NovaSeq'
+HISEQ4000 = 'HiSeq4000'
+HISEQ3000 = 'HiSeq3000'
+HISEQ = 'HiSeq'
+UNKNOWN_SEQUENCER = 'unknown'
+
 _accepted_read_keys = {I5, I7, R1, R2}
 _accepted_barcode_properties = {BC_READ, BC_START, BC_END, BC_WHITELIST}
 _required_barcode_properties = {BC_READ, BC_START, BC_END}
 _reserved_keys = {'r1_name', 'r2_name', 'r1_seq', 'r2_seq', 'r1_qual', 'r2_qual'}
 
+
+def reverse_complement_i5(name):
+    """
+    Take a BCL directory, fastq file, or instrument ID and return whether or not i5 should be reverse complemented.
+    This assumes that NextSeq instruments and other similar machines should be reverse complemeted whereas MiSeq should not.
+
+    Args:
+        
+    """
+    run_info = os.path.join(name, 'RunInfo.xml')
+    if os.path.exists(run_info):
+        # Arg is BCL
+        sequencer_name = get_run_info(name)
+    elif os.path.exists(name) and '.fq' in name or '.fastq' in name:
+        # Is fastq file
+        sequencer_name = get_instrument_id(name)
+    elif re.match('^[A-Z0-9]+$', name):
+        sequencer_name = name
+    else:
+        raise ValueError('Invalid input, could not detect fastq (or fq) file, BCL, or instrument ID.')
+
+    return _should_reverse_complement_i5(sequencer_name)
+
+
+def get_instrument_id(fastq):
+    """
+    Helper function to quickly get the instrument ID from first line of Fastq file.
+    This function assumes that you have not modified the FASTQ header in such a way that the instrument ID is no longer present.
+
+    Args:
+        fastq (str): Path to fastq file
+
+    Returns:
+        str: instrument ID
+    """
+
+    for line in FastqGeneralIterator(open_file(fastq)):
+        r_name, _, _ = line
+        
+        entries = r_name.split(':')[0]
+        if len(entries) <= 2 or not re.match('^[A-Z0-9]+$', entries[0]):
+            raise ValueError('Valid instrument ID not apparent in FASTQ read names... %s' % r_name)
+        return entries[0]
+
+def _should_reverse_complement_i5(instrument_id):
+    """
+    Internal helper function just to handle mapping instrument IDs to
+    whether or not the P5 should be reverse complemented.
+    """
+    # Currently just assume Miseq should not be and everything else should be
+    # TODO this is obviously not comprehensive.
+    return instrument_id != 'M'
 
 def get_run_info(flow_cell_path):
     """
@@ -47,51 +110,53 @@ def get_run_info(flow_cell_path):
     """
     run_stats = {}
 
-    bcl_run_info = os.path.join(flow_cell_path, 'RunInfo.xml')
+    bcl_run_info = os.path.join(flow_cell_path, 'RunParameters.xml*')
+    bcl_run_info = glob.glob(bcl_run_info)
+    if not bcl_run_info:
+        raise ValueError('BCL RunParameters.xml not found for specified flowcell: %s' % bcl_run_info)
+    else:
+        bcl_run_info = bcl_run_info[0]
 
-    if not os.path.exists(bcl_run_info):
-        raise ValueError('BCL RunInfo.xml not found for specified flowcell: %s' % bcl_run_info)
+    # Set up a few nodes for parsing
+    tree = ET.parse(open_file(bcl_run_info))
 
-    # Get the flowcell info
-    flowcells = list(ET.parse(bcl_run_info).getroot().iter('Flowcell'))
-    if len(flowcells) > 1:
-        raise ValueError('BCL RunInfo contains %s flowcell declarations. Expected 1.' % len(flowcells))
+    setup_node = tree.getroot().find("Setup")
+    if setup_node is None:
+        setup_node = tree.getroot()
 
-    flowcell = flowcells[0].text.split('-')[-1]
-    run_stats['flow_cell_id'] = flowcell
+    flowcell_node = tree.getroot().find("FlowCellRfidTag")
+    instrument_id_node = tree.getroot().find('InstrumentID')
+    run_start_date_node = tree.getroot().find('RunStartDate')
 
-    date = list(ET.parse(bcl_run_info).getroot().iter('Date'))[0].text
-    run_stats['date'] = date
+    # Now actually populate various stats
+    run_stats['flow_cell_id'] = flowcell_node.find('SerialNumber').text
+    run_stats['date'] = run_start_date_node.text
+    run_stats['instrument'] = instrument_id_node.text
+    run_stats['lanes'] = int(setup_node.find('NumLanes').text)
+    
+    run_stats['r1_length'] = int(setup_node.find('Read1').text)
+    run_stats['r2_length'] = int(setup_node.find('Read2').text)
+    run_stats['p7_index_length'] = int(setup_node.find('Index1Read').text)
+    run_stats['p5_index_length'] = int(setup_node.find('Index2Read').text)
 
-    instrument = list(ET.parse(bcl_run_info).getroot().iter('Instrument'))[0].text
-    run_stats['instrument'] = instrument
+    application = setup_node.find('ApplicationName').text
+    application_version = setup_node.find('ApplicationVersion')
+    if NEXTSEQ in application:
+        run_stats['instrument_type'] = NEXTSEQ
+    elif MISEQ in application:
+        run_stats['instrument_type'] = MISEQ
+    elif NOVASEQ in application:
+        run_stats['instrument_type'] = NOVASEQ
+    elif HISEQ in application:
+        app_string = re.search(r'[\d\.]+', application_version).group()
+        app_major_version = int(app_string.split('.')[0])
 
-    flowcell_lanes = int(list(ET.parse(bcl_run_info).getroot().iter('FlowcellLayout'))[0].attrib['LaneCount'])
-    run_stats['lanes'] = flowcell_lanes
-
-    # Get the index read lengths
-    read_info = list(list(ET.parse(bcl_run_info).getroot().iter('Reads'))[0].iter())
-
-    if not read_info:
-        raise ValueError('Read info not found in BCL file: %s' % bcl_run_info)
-
-    for read in read_info:
-        attributes = read.attrib
-        if not 'IsIndexedRead' in attributes:
-            continue
-
-        if attributes['IsIndexedRead'] == 'N' and 'r1_length' not in run_stats:
-            run_stats['r1_length'] = int(attributes['NumCycles'])
-            continue
-        if attributes['IsIndexedRead'] == 'Y' and 'p7_index_length' not in run_stats:
-            run_stats['p7_index_length'] = int(attributes['NumCycles'])
-            continue
-        if attributes['IsIndexedRead'] == 'N' and 'r2_length' not in run_stats:
-            run_stats['r2_length'] = int(attributes['NumCycles'])
-            continue
-        if attributes['IsIndexedRead'] == 'Y' and 'p5_index_length' not in run_stats:
-            run_stats['p5_index_length'] = int(attributes['NumCycles'])
-            continue
+        if app_major_version > 2:
+            run_stats['instrument_type'] = HISEQ4000
+        else:
+            run_stats['instrument_type'] = HISEQ3000
+    else:
+        run_stats['instrument_type'] = UNKNOWN_SEQUENCER
 
     return run_stats
 
