@@ -17,7 +17,7 @@ revcomp = None
 if sys.version_info[0] >= 3:
     revcomp = str.maketrans('ACGTacgtRYMKrymkVBHDvbhd', 'TGCAtgcaYRKMyrkmBVDHbvdh')
 else:
-    import itertools.izip as zip
+    from itertools import izip as zip
     revcomp = string.maketrans('ACGTacgtRYMKrymkVBHDvbhd', 'TGCAtgcaYRKMyrkmBVDHbvdh')
 
 VALID_BASES = {'A', 'C', 'G', 'T', 'a', 'c', 'g', 't', 'n', 'N'}
