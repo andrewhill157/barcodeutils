@@ -304,13 +304,19 @@ def validate_barcode_spec(spec):
                 if isinstance(bc_property, str):
                     if not os.path.exists(bc_property):
                         return (False, '%s property in entry for %s is supposed to be a string or a set object. Found string, but no file is found with the name %s.' % (property_key, k, bc_property))
-                elif not isinstance(bc_property, set) and not isinstance(bc_property, list):
-                    return (False, '%s property in entry for %s is supposed to be a string or a set/list object.' % (property_key, k))
+                elif not isinstance(bc_property, set) and not isinstance(bc_property, list) and not isinstance(bc_property, dict):
+                    return (False, '%s property in entry for %s is supposed to be a string or a set/list/dict object.' % (property_key, k))
                 else:
                     # Is set or list, check elements
                     if len(bc_property) == 0:
                         return (False, 'Set or list found for whitelist provided by %s, %s, but is empty.' % (property_key, bc_property))
-                    for entry in bc_property:
+
+                    if isinstance(bc_property, list) or isinstance(bc_property, set):
+                        sequence_list = bc_property
+                    else:
+                        sequence_list = bc_property.keys()
+
+                    for entry in sequence_list:
                         if not isinstance(entry, str):
                             return (False, 'Entry in whitelist for %s, %s, is not a string.' % (k, entry))
                         if not is_dna(entry):
@@ -354,27 +360,40 @@ def load_barcode_spec(f):
     return spec
 
 
-def valid_whitelist(whitelist):
+def valid_whitelist(whitelist, variable_lengths=False):
+    """
+    Validate that a whitelist is all DNA sequences and is of equal length unless specified otherwise.
+    """
     observed_lengths = set()
     for seq in whitelist:
         if not is_dna(seq):
-            return (False, 'Whitelist entry %s is not a DNA sequence and only DNA sequences are allowed (ATGCN).' % seq)
+            return (False, 'Whitelist entry %s is not a DNA sequence and only DNA sequences are allowed (bases: ATGCN).' % seq)
         observed_lengths.add(len(seq))
     
-    if len(observed_lengths) > 1:
-        return (False, 'Whitelist has barcodes of variable lengths %s' % (', '.join(list(observed_lengths))))
+    if not variable_lengths and len(observed_lengths) > 1:
+        return (False, 'Whitelist has barcodes of variable lengths %s' % (', '.join([str(x) for x in list(observed_lengths)])))
 
     return True, None
 
-def load_whitelist(whitelist):
+def load_whitelist(whitelist, variable_lengths=False):
     if not os.path.exists(whitelist):
         raise ValueError('Specified whitelist file does not exist %s' % whitelist)
 
+    id_lookup = None
     whitelist = [line.strip() for line in open_file(whitelist)]
+    
+    if '\t' in whitelist[0]:
+        whitelist = dict([tuple(reversed(line.split('\t'))) for line in whitelist])
+        id_lookup = copy.deepcopy(whitelist)
+        whitelist = whitelist.keys()
+
     whitelist = set(whitelist)
-    valid, error = valid_whitelist(whitelist)
+    valid, error = valid_whitelist(whitelist, variable_lengths=variable_lengths)
     if valid:
-        return whitelist
+        if id_lookup:
+            return id_lookup
+        else:
+            return whitelist
     else:
         raise ValueError(error)
 
@@ -399,23 +418,32 @@ class WriteBuffer:
         self.file_handle.close()
 
 class BarcodeCorrecter:
-    def __init__(self, whitelist, edit_distance=1):
-        if not isinstance(whitelist, set) and not isinstance(whitelist, list):
-            raise ValueError('Whitelist argument must be a list or a set.')
-        
+    def __init__(self, whitelist, edit_distance=1, variable_lengths=False):
+        if not isinstance(whitelist, set) and not isinstance(whitelist, dict) and not isinstance(whitelist, list) and not isinstance(whitelist, str):
+            raise ValueError('Whitelist argument must be a list, a set, a string, or a dict.')
+
+        if not isinstance(edit_distance, int) and edit_distance > 0:
+            raise ValueError('Edit distance must be a positive integer and got %s.' % edit_distance)
+
+        self.id_lookup = None
+
         if isinstance(whitelist, str):
             # this already validates so no need to do again
-            whitelist = load_whitelist(whitelist)
+            whitelist = load_whitelist(whitelist, variable_lengths=variable_lengths)
+            if isinstance(whitelist, dict):
+                self.id_lookup = whitelist
+                whitelist = set(self.id_lookup.keys())
         else:
             if isinstance(whitelist, list):
                 whitelist = set(whitelist)
             
-            valid, error = valid_whitelist(whitelist)
+            elif isinstance(whitelist, dict):
+                self.id_lookup = whitelist
+                whitelist = set(whitelist.keys())
+
+            valid, error = valid_whitelist(whitelist, variable_lengths=variable_lengths)
             if not valid:
                 raise ValueError(error)
-      
-        if not isinstance(edit_distance, int) and edit_distance > 0:
-            raise ValueError('Edit distance must be a positive integer and got %s.' % edit_distance)
 
         self.whitelist = whitelist
         self.edit_distance = edit_distance
@@ -426,7 +454,10 @@ class BarcodeCorrecter:
             corrected = self.mismatch_map[i].get(seq, None)
 
             if corrected is not None:
-                return corrected
+                if self.id_lookup:
+                    return self.id_lookup[corrected]
+                else:
+                    return corrected
 
         return None
 
