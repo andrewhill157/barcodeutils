@@ -532,6 +532,7 @@ def parse_fastq_barcodes(r1, r2=None, spec=None, reverse_i5=False, edit_distance
 
     # Validate requested reads    
     requested_reads = set([spec[barcode][BC_READ] for barcode in spec])
+
     if not r2 and R2 in requested_reads:
         raise ValueError('%s requested but r2 not provided as an argument to parser...' % R2)
 
@@ -574,6 +575,7 @@ def parse_fastq_barcodes(r1, r2=None, spec=None, reverse_i5=False, edit_distance
     i7_start = None
     i7_end = None
     read_lengths_checked = False
+    index_reads_checked = False
 
     for r in fastq_iterator:
         # Get seqs and store
@@ -592,13 +594,15 @@ def parse_fastq_barcodes(r1, r2=None, spec=None, reverse_i5=False, edit_distance
             barcodes_dict['r1_seq'] = r1_seq
             barcodes_dict['r1_qual'] = r1_qual
 
-        # Find index coords
-        if (index_start is None and i7_start is None and i7_end is None) and (I7 in requested_reads or I5 in requested_reads):
-            index_start, i7_start, i7_end, i5_start, i5_end = _get_index_coords(r1_name)
-            if (i5_start is None or i5_end is None) and I5 in requested_reads:
-                raise ValueError('Spec requests I5 read in barcode %s, but i5 index not found in r1 name %s.' % (barcode, r1_name))
-            if (i7_start is None or i7_end is None) and I7 in requested_reads:
-                raise ValueError('Spec requests I7 read in barcode %s, but no index is found in the r1 name %s.' % (barcode, r1_name))
+        # Find index coords given first read
+        if not index_reads_checked:
+            if (index_start is None and i7_start is None and i7_end is None) and (I7 in requested_reads or I5 in requested_reads):
+                index_start, i7_start, i7_end, i5_start, i5_end = _get_index_coords(r1_name)
+                if (i5_start is None or i5_end is None) and I5 in requested_reads:
+                    raise ValueError('Spec requests I5 read in barcode %s, but i5 index not found in r1 name %s.' % (barcode, r1_name))
+                if (i7_start is None or i7_end is None) and I7 in requested_reads:
+                    raise ValueError('Spec requests I7 read in barcode %s, but no index is found in the r1 name %s.' % (barcode, r1_name))
+            index_reads_checked = True
 
         # Get all barcode seqs
         for barcode in spec:
